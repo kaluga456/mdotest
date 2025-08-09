@@ -1,0 +1,5 @@
+This is a sample text file.
+It contains multiple lines of plain text.
+You can use it for testing purposes,
+like reading file content in a program,
+or for demonstrating basic file operations.

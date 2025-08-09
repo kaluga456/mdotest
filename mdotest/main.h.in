@@ -1,0 +1,3 @@
+#pragma once
+
+#include "@TARGET_HEADER@"
