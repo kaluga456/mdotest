@@ -9,64 +9,45 @@
 #define BUFFER_SIZE 1024
 char Buffer[BUFFER_SIZE];
 
-//we use only one client socket
-//because this is single threaded app
+//one client socket for single threaded app
 SOCKET ClientSocket = 0;
 
-//content types
-enum
+//get MIME string by file extension
+static const char* get_mime_string(const char* file_name)
 {
-    CONNTENT_TEXT,
-    CONTENT_HTML,
-    CONTENT_IMAGE,
-    CONTENT_UNKNOWN
-};
-const char* get_mime_string(int type)
-{
-    if(CONNTENT_TEXT == type) return "text/plain";
-    if(CONTENT_HTML == type) return "text/html";
-    if(CONTENT_IMAGE == type) return "image/jpeg";
+    const char* ext = strrchr(file_name, '.');
+    if (ext)
+    {
+        ++ext;
+        if (0 == strcmp(ext, "txt")) return "text/plain";
+        if (0 == strcmp(ext, "html")) return "text/html";
+        if (0 == strcmp(ext, "jpg")) return "image/jpeg";
+        if (0 == strcmp(ext, "jpeg")) return "image/jpeg";
+    }
     return "application/octet-stream";
 }
 
-//get file type by extension
-int get_file_type(const char* file_name)
-{
-    const char* ext = strrchr(file_name, '.');
-    if (NULL == ext)
-        return CONTENT_UNKNOWN;
-    ++ext;
-
-    if (0 == strcmp(ext, "txt")) return CONNTENT_TEXT;
-    if (0 == strcmp(ext, "html")) return CONTENT_HTML;
-    if (0 == strcmp(ext, "jpg")) return CONTENT_IMAGE;
-    if (0 == strcmp(ext, "jpeg")) return CONTENT_IMAGE;
-    return CONTENT_UNKNOWN;
-}
-
 //error reply
-void send_error(int http_reply_code)
+static void send_error(int http_reply_code)
 {
-    const char* header_format = "HTTP/1.1 %s\r\n"
+    const char* packet_format = "HTTP/1.1 %s\r\n"
                                 "Content-Type: text/plain\r\n"
                                 "Connection: close\r\n"
                                 "\r\n"
                                 "%s\r\n";
-    int result = -1;
-    if (404 == http_reply_code)
-        result = sprintf(Buffer, header_format, "404 Not Found", "File not found");
-    else
-        result = sprintf(Buffer, header_format, "400 Bad Request", "Request is not supported");
 
-    if (result < 0)
-        return;
+    if (404 == http_reply_code)
+        sprintf(Buffer, packet_format, "404 Not Found", "File not found");
+    else
+        sprintf(Buffer, packet_format, "400 Bad Request", "Request is not supported");
 
     send(ClientSocket, Buffer, (int)strlen(Buffer), 0);
 }
 
-void send_file(char* buffer_pos, FILE* file, int file_size)
+static void send_file(char* buffer_pos, FILE* file, int file_size)
 {
     char* buffer_end = Buffer + BUFFER_SIZE;
+    fseek(file, 0L, SEEK_SET);
     while (true)
     {
         const size_t max_chunk_size = buffer_end - buffer_pos;
@@ -84,7 +65,7 @@ void send_file(char* buffer_pos, FILE* file, int file_size)
     }
 }
 
-void send_reply(const char* file_name)
+static void send_reply(const char* file_name)
 {
     //open file
     FILE* file = fopen(file_name, "rb");
@@ -93,9 +74,6 @@ void send_reply(const char* file_name)
         send_error(404);
         return;
     }
-
-    //determine file type
-    const int content_type = get_file_type(file_name);
 
     //get file size
     fseek(file, 0L, SEEK_END);
@@ -106,16 +84,15 @@ void send_reply(const char* file_name)
                                 "Content-Type: %s\r\n"
                                 "Content-Length: %d\r\n"
                                 "\r\n";
-    char* buffer_pos = Buffer + sprintf(Buffer, header_format, get_mime_string(content_type), file_size);
+    char* buffer_pos = Buffer + sprintf(Buffer, header_format, get_mime_string(file_name), file_size);
 
     //send file
-    fseek(file, 0L, SEEK_SET);
     send_file(buffer_pos, file, file_size);
 
     fclose(file);
 }
 
-void process_request(int bytes_read, char* Buffer)
+static void process_request(int bytes_read, char* Buffer)
 {
     const char* end = Buffer + bytes_read;
 
@@ -214,7 +191,7 @@ int main()
     while(true)
     {
         //accept
-        const SOCKET ClientSocket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_len);
+        ClientSocket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_len);
         if(ClientSocket < 0)
         {
             perror("ERROR: accept() failed");
@@ -240,6 +217,10 @@ int main()
     }
     
     close(server_socket);
+
+#ifdef _MSC_VER
+    WSACleanup();
+#endif
 
     return 0;
 }
